@@ -59,8 +59,8 @@ jobs:
               const cookies = JSON.parse(fs.readFileSync('./cookies.json', 'utf8'));
               await page.setCookie(...cookies);
 
-              while (true) {
-                  console.log(`Visiting: ${videoUrl}`);
+              for (let i = 0; i < 3; i++) {
+                  console.log(`Loop ${i + 1}: Visiting ${videoUrl}`);
                   try {
                       await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 60000 });
                       console.log('Page loaded successfully.');
@@ -71,17 +71,20 @@ jobs:
                       await page.click(playButtonSelector);
                       console.log('Video started playing.');
                       
-                      console.log('Waiting for 5 minutes...');
-                      await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+                      await page.screenshot({ path: `./screenshots/youtube_after_play_${Date.now()}.png` });
                       
-                      await page.screenshot({ path: `./screenshots/youtube_page_${Date.now()}.png` });
+                      console.log('Waiting for 1 minute...');
+                      await new Promise(resolve => setTimeout(resolve, 60 * 1000));
+                      
+                      await page.screenshot({ path: `./screenshots/youtube_after_1_min_${Date.now()}.png` });
                   } catch (error) {
                       console.error('Error loading page:', error.message);
                       fs.writeFileSync('./screenshots/failure_page_content.html', await page.content());
                   }
-
-                  console.log('Repeating loop...');
               }
+
+              console.log('Closing browser...');
+              await browser.close();
           }
 
           async function run() {
