@@ -75,7 +75,7 @@ jobs:
                       if (!userLoggedIn) {
                           console.warn('User is not logged in! Check your stored cookies.');
                           const documentCookies = await page.evaluate(() => {
-                            return document.cookies;
+                            return document.cookie;
                           });
                           console.log(documentCookies);
                       }
