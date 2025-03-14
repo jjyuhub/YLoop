@@ -62,7 +62,7 @@ jobs:
               console.log('Checking if user is logged in...');
               await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 60000 });
               const userLoggedIn = await page.evaluate(() => {
-                  return document.querySelector("a[href*='signout'], a[href*='logout'], button[aria-label='Google Account']") !== null;
+                  return document.querySelector("a[href='/logout'], a[href*='signout'], a[href*='/logout'], button[aria-label='Google Account']") !== null;
               });
               console.log(`User logged in: ${userLoggedIn}`);
               if (!userLoggedIn) {
