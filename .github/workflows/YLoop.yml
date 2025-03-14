@@ -1,0 +1,90 @@
+name: YLoop
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'  # Run every 10 minutes
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'YouTube Video URL'
+        required: true
+        default: 'https://www.youtube.com/watch?v=fuMMSpbPPQs&list=PLaHqwgkhNP9GzvPkj7maeLszT4Xp7F58F'
+
+jobs:
+  visit-youtube:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          echo "Initializing npm project..."
+          npm init -y
+          echo "Installing Puppeteer..."
+          npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs debug
+
+      - name: Create Puppeteer script
+        run: |
+          mkdir -p scripts screenshots
+          cat > scripts/youtube-visit.js << 'EOL'
+          const puppeteer = require('puppeteer-extra');
+          const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+          const fs = require('fs');
+
+          puppeteer.use(StealthPlugin());
+
+          async function visitYouTube(videoUrl) {
+              console.log('Launching browser...');
+              const browser = await puppeteer.launch({
+                  headless: "new",
+                  executablePath: require('puppeteer').executablePath(),
+                  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+              });
+              const page = await browser.newPage();
+
+              console.log(`Visiting: ${videoUrl}`);
+              try {
+                  await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                  console.log('Page loaded successfully.');
+                  await page.screenshot({ path: './screenshots/youtube_page.png' });
+              } catch (error) {
+                  console.error('Error loading page:', error.message);
+                  fs.writeFileSync('./screenshots/failure_page_content.html', await page.content());
+              }
+
+              console.log('Closing browser...');
+              await browser.close();
+          }
+
+          async function run() {
+              const videoUrl = process.argv[2] || 'https://www.youtube.com/watch?v=fuMMSpbPPQs&list=PLaHqwgkhNP9GzvPkj7maeLszT4Xp7F58F';
+              await visitYouTube(videoUrl);
+          }
+
+          run().catch(error => {
+              console.error('Script failed:', error.message);
+          });
+          EOL
+
+      - name: Run Puppeteer script
+        run: |
+          VIDEO_URL="${{ github.event.inputs.video_url || 'https://www.youtube.com/watch?v=fuMMSpbPPQs&list=PLaHqwgkhNP9GzvPkj7maeLszT4Xp7F58F' }}"
+          echo "Visiting: $VIDEO_URL"
+          node scripts/youtube-visit.js "$VIDEO_URL" | tee script_output.log
+
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-debug-artifacts
+          path: |
+            screenshots/
+            *.log
+          retention-days: 7
