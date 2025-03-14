@@ -49,16 +49,12 @@ jobs:
           async function visitYouTube(videoUrl) {
               console.log('Launching browser...');
               const browser = await puppeteer.launch({
-                  headless: false,
+                  headless: "new",
                   executablePath: require('puppeteer').executablePath(),
                   args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
               });
               const page = await browser.newPage();
 
-              console.log('Setting up user agent and viewport...');
-              await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.51 Safari/537.36");
-              await page.setViewport({ width: 1280, height: 800 });
-              
               console.log('Loading cookies...');
               const cookies = JSON.parse(fs.readFileSync('./cookies.json', 'utf8'));
               await page.setCookie(...cookies);
@@ -78,13 +74,6 @@ jobs:
                   try {
                       await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 60000 });
                       console.log('Page loaded successfully.');
-                      
-                      console.log('Simulating human interaction...');
-                      await page.mouse.move(500, 500);
-                      await page.mouse.click(500, 500);
-                      await page.evaluate(() => {
-                          window.scrollBy(0, 100);
-                      });
                       
                       console.log('Checking if video is already playing...');
                       const isPlaying = await page.evaluate(() => {
@@ -116,10 +105,12 @@ jobs:
                           console.log('Video is already playing. Skipping Play button click.');
                       }
                       
-                      console.log('Waiting for 40 seconds to ensure view is registered...');
-                      await new Promise(resolve => setTimeout(resolve, 40000));
-                      
                       await page.screenshot({ path: `./screenshots/youtube_after_play_${Date.now()}.png` });
+                      
+                      console.log('Waiting for 1 minute...');
+                      await new Promise(resolve => setTimeout(resolve, 60 * 1000));
+                      
+                      await page.screenshot({ path: `./screenshots/youtube_after_1_min_${Date.now()}.png` });
                   } catch (error) {
                       console.error('Error during page interaction:', error.message);
                       fs.writeFileSync('./screenshots/failure_page_content.html', await page.content());
@@ -143,10 +134,6 @@ jobs:
 
       - name: Run Puppeteer script
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-          Xvfb :99 -screen 0 1920x1080x24 &
-          export DISPLAY=:99
           VIDEO_URL="${{ github.event.inputs.video_url || 'https://www.youtube.com/watch?v=fuMMSpbPPQs&list=PLaHqwgkhNP9GzvPkj7maeLszT4Xp7F58F' }}"
           echo "Visiting: $VIDEO_URL"
           node scripts/youtube-visit.js "$VIDEO_URL" | tee script_output.log
