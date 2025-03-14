@@ -61,12 +61,23 @@ jobs:
               
               console.log('Checking if user is logged in...');
               await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 60000 });
-              const userLoggedIn = await page.evaluate(() => {
+              let userLoggedIn = await page.evaluate(() => {
                   return document.querySelector("a[href='/logout'], a[href*='signout'], a[href*='/logout'], button[aria-label='Google Account']") !== null;
               });
               console.log(`User logged in: ${userLoggedIn}`);
+              
               if (!userLoggedIn) {
-                  console.warn('User is not logged in! Check your stored cookies.');
+                  console.warn('User is not logged in! Attempting to refresh and check again...');
+                  await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+                  userLoggedIn = await page.evaluate(() => {
+                      return document.querySelector("a[href='/logout'], a[href*='signout'], a[href*='/logout'], button[aria-label='Google Account']") !== null;
+                  });
+                  console.log(`User logged in after refresh: ${userLoggedIn}`);
+                  if (!userLoggedIn) {
+                      console.error('User is still not logged in after refresh. Exiting script.');
+                      await browser.close();
+                      process.exit(1);
+                  }
               }
               
               for (let i = 0; i < 3; i++) {
