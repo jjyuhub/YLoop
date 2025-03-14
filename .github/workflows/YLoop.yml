@@ -75,25 +75,34 @@ jobs:
                       await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 60000 });
                       console.log('Page loaded successfully.');
                       
-                      console.log('Checking for Play button...');
-                      const playButtonSelectors = [
-                          'button[aria-label="Play"]',
-                          'button[title="Play (k)"]',
-                          '.ytp-play-button'
-                      ];
-                      let playButton = null;
-                      for (const selector of playButtonSelectors) {
-                          playButton = await page.$(selector);
-                          if (playButton) {
-                              console.log(`Play button found using selector: ${selector}`);
-                              await playButton.click();
-                              console.log('Video started playing.');
-                              break;
-                          }
-                      }
+                      console.log('Checking if video is already playing...');
+                      const isPlaying = await page.evaluate(() => {
+                          const video = document.querySelector('video');
+                          return video && !video.paused;
+                      });
                       
-                      if (!playButton) {
-                          console.warn('Play button not found, skipping play action.');
+                      if (!isPlaying) {
+                          console.log('Video is not playing. Attempting to click Play button...');
+                          const playButtonSelectors = [
+                              'button[aria-label="Play"]',
+                              'button[title="Play (k)"]',
+                              '.ytp-play-button'
+                          ];
+                          let playButton = null;
+                          for (const selector of playButtonSelectors) {
+                              playButton = await page.$(selector);
+                              if (playButton) {
+                                  console.log(`Play button found using selector: ${selector}`);
+                                  await playButton.click();
+                                  console.log('Video started playing.');
+                                  break;
+                              }
+                          }
+                          if (!playButton) {
+                              console.warn('Play button not found, skipping play action.');
+                          }
+                      } else {
+                          console.log('Video is already playing. Skipping Play button click.');
                       }
                       
                       await page.screenshot({ path: `./screenshots/youtube_after_play_${Date.now()}.png` });
