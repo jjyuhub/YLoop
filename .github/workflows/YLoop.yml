@@ -58,6 +58,13 @@ jobs:
               console.log('Loading cookies...');
               const cookies = JSON.parse(fs.readFileSync('./cookies.json', 'utf8'));
               await page.setCookie(...cookies);
+              
+              console.log('Checking if user is logged in...');
+              await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 60000 });
+              const userLoggedIn = await page.evaluate(() => {
+                  return document.querySelector("a[href*='signout']") !== null;
+              });
+              console.log(`User logged in: ${userLoggedIn}`);
 
               for (let i = 0; i < 3; i++) {
                   console.log(`Loop ${i + 1}: Visiting ${videoUrl}`);
