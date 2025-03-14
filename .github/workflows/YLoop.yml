@@ -41,6 +41,11 @@ jobs:
 
           puppeteer.use(StealthPlugin());
 
+          // Helper sleep function to wait for a specified time (in ms)
+          function sleep(ms) {
+              return new Promise(resolve => setTimeout(resolve, ms));
+          }
+
           // Fetch dynamic list of proxies from an API
           async function getProxies() {
               try {
@@ -89,7 +94,7 @@ jobs:
                   });
                   const page = await browser.newPage();
 
-                  // Optional: add error listeners to log page errors
+                  // Log page-level errors
                   page.on('error', error => console.error('Page error:', error));
                   page.on('pageerror', error => console.error('Page error:', error));
 
@@ -107,7 +112,7 @@ jobs:
                               console.error(`Loop ${i + 1}: Attempt ${attempt} failed: ${navError.message}`);
                               if (attempt < maxRetries) {
                                   console.log(`Retrying in 5 seconds...`);
-                                  await page.waitForTimeout(5000);
+                                  await sleep(5000);
                               } else {
                                   throw navError;
                               }
@@ -153,7 +158,7 @@ jobs:
                       // Take periodic screenshots every 5 seconds while watching for a total of 31 seconds
                       console.log('Watching for 31 seconds with periodic screenshots...');
                       for (let t = 5; t <= 31; t += 5) {
-                          await page.waitForTimeout(5000);
+                          await sleep(5000);
                           await safeScreenshot(page, `./screenshots/youtube_watch_${t}s_${Date.now()}.png`);
                       }
 
