@@ -27,14 +27,8 @@ jobs:
         run: |
           echo "Initializing npm project..."
           npm init -y
-          echo "Installing Puppeteer..."
-          npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs debug
-
-      - name: Load YouTube cookies from GitHub Secret
-        run: |
-          echo "${{ secrets.YOUTUBE_COOKIES }}" | base64 --decode > cookies.json || echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.json
-        env:
-          YOUTUBE_COOKIES: "${{ secrets.YOUTUBE_COOKIES }}"
+          echo "Installing Puppeteer and Axios..."
+          npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs debug axios
 
       - name: Create Puppeteer script
         run: |
@@ -42,50 +36,59 @@ jobs:
           cat > scripts/youtube-visit.js << 'EOL'
           const puppeteer = require('puppeteer-extra');
           const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+          const axios = require('axios');
           const fs = require('fs');
 
           puppeteer.use(StealthPlugin());
 
+          async function getProxies() {
+              try {
+                  console.log("Fetching proxy list...");
+                  const response = await axios.get('https://www.proxy-list.download/api/v1/get?type=http');
+                  return response.data.split("\r\n").filter(proxy => proxy.trim() !== "");
+              } catch (error) {
+                  console.error("Failed to fetch proxy list:", error.message);
+                  return [];
+              }
+          }
+
           async function visitYouTube(videoUrl) {
-              console.log('Launching browser...');
-              const browser = await puppeteer.launch({
-                  headless: "new",
-                  executablePath: require('puppeteer').executablePath(),
-                  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-              });
-              const page = await browser.newPage();
+              const proxies = await getProxies();
+              if (proxies.length === 0) {
+                  console.warn("No proxies available. Exiting...");
+                  return;
+              }
 
-              console.log('Loading cookies...');
-              const cookies = JSON.parse(fs.readFileSync('./cookies.json', 'utf8'));
-              await page.setCookie(...cookies);
-              
-
-              
               for (let i = 0; i < 3; i++) {
-                  console.log(`Loop ${i + 1}: Visiting ${videoUrl}`);
-                  try {
-                      await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-                      console.log('Page loaded successfully.');
+                  const proxy = proxies[Math.floor(Math.random() * proxies.length)];
+                  console.log(`Loop ${i + 1}: Using proxy: ${proxy}`);
 
-                      console.log('Checking if user is logged in...');
-                      const userLoggedIn = await page.evaluate(() => {
-                          return document.querySelector("a[href='/logout'], a[href*='signout'], a[href*='/logout'], button[aria-label='Google Account']") !== null;
-                      });
-                      console.log(`User logged in: ${userLoggedIn}`);
-                      if (!userLoggedIn) {
-                          console.warn('User is not logged in! Check your stored cookies.');
-                          const documentCookies = await page.evaluate(() => {
-                            return document.cookie;
-                          });
-                          console.log(documentCookies);
-                      }
-                      
+                  console.log('Launching browser with proxy...');
+                  const browser = await puppeteer.launch({
+                      headless: "new",
+                      executablePath: require('puppeteer').executablePath(),
+                      args: [
+                          `--proxy-server=http://${proxy}`,
+                          '--no-sandbox',
+                          '--disable-setuid-sandbox',
+                          '--disable-dev-shm-usage',
+                          '--disable-gpu'
+                      ]
+                  });
+                  const page = await browser.newPage();
+
+                  try {
+                      console.log(`Loop ${i + 1}: Visiting ${videoUrl}`);
+                      await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+
+                      await page.screenshot({ path: `./screenshots/youtube_loaded_${Date.now()}.png` });
+
                       console.log('Checking if video is already playing...');
                       const isPlaying = await page.evaluate(() => {
                           const video = document.querySelector('video');
                           return video && !video.paused;
                       });
-                      
+
                       if (!isPlaying) {
                           console.log('Video is not playing. Attempting to click Play button...');
                           const playButtonSelectors = [
@@ -100,6 +103,7 @@ jobs:
                                   console.log(`Play button found using selector: ${selector}`);
                                   await playButton.click();
                                   console.log('Video started playing.');
+                                  await page.screenshot({ path: `./screenshots/youtube_play_clicked_${Date.now()}.png` });
                                   break;
                               }
                           }
@@ -109,22 +113,25 @@ jobs:
                       } else {
                           console.log('Video is already playing. Skipping Play button click.');
                       }
-                      
-                      await page.screenshot({ path: `./screenshots/youtube_after_play_${Date.now()}.png` });
-                      
-                      console.log('Waiting for 10 minutes...');
-                      await new Promise(resolve => setTimeout(resolve, 600 * 1000));
-                      
-                      await page.screenshot({ path: `./screenshots/youtube_after_1_min_${Date.now()}.png` });
+
+                      console.log('Watching for 31 seconds...');
+                      for (let t = 5; t <= 31; t += 5) {
+                          await new Promise(resolve => setTimeout(resolve, 5000));
+                          await page.screenshot({ path: `./screenshots/youtube_watch_${t}s_${Date.now()}.png` });
+                      }
+
+                      console.log('Finished watching, closing browser.');
+                      await page.screenshot({ path: `./screenshots/youtube_finished_${Date.now()}.png` });
+
                   } catch (error) {
                       console.error('Error during page interaction:', error.message);
                       fs.writeFileSync('./screenshots/failure_page_content.html', await page.content());
                       await page.screenshot({ path: './screenshots/failure_screenshot.png' });
+                  } finally {
+                      console.log('Closing browser...');
+                      await browser.close();
                   }
               }
-
-              console.log('Closing browser...');
-              await browser.close();
           }
 
           async function run() {
