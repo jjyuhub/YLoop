@@ -61,6 +61,7 @@ jobs:
               
               console.log('Checking if user is logged in...');
               await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 60000 });
+              await new Promise(resolve => setTimeout(resolve, 10 * 1000));
               const userLoggedIn = await page.evaluate(() => {
                   return document.querySelector("a[href='/logout'], a[href*='signout'], a[href*='/logout'], button[aria-label='Google Account']") !== null;
               });
@@ -107,8 +108,8 @@ jobs:
                       
                       await page.screenshot({ path: `./screenshots/youtube_after_play_${Date.now()}.png` });
                       
-                      console.log('Waiting for 1 minute...');
-                      await new Promise(resolve => setTimeout(resolve, 60 * 1000));
+                      console.log('Waiting for 10 minutes...');
+                      await new Promise(resolve => setTimeout(resolve, 600 * 1000));
                       
                       await page.screenshot({ path: `./screenshots/youtube_after_1_min_${Date.now()}.png` });
                   } catch (error) {
