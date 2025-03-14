@@ -65,20 +65,24 @@ jobs:
                       await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 60000 });
                       console.log('Page loaded successfully.');
                       
-                      console.log('Clicking Play button...');
+                      console.log('Checking for Play button...');
                       const playButtonSelector = 'button[aria-label="Play"]';
-                      await page.waitForSelector(playButtonSelector, { visible: true, timeout: 30000 });
-                      await page.click(playButtonSelector);
-                      console.log('Video started playing.');
+                      if (await page.$(playButtonSelector)) {
+                          console.log('Play button found, clicking...');
+                          await page.click(playButtonSelector);
+                          console.log('Video started playing.');
+                      } else {
+                          console.warn('Play button not found, skipping play action.');
+                      }
                       
                       await page.screenshot({ path: `./screenshots/youtube_after_play_${Date.now()}.png` });
                       
-                      console.log('Waiting for 1 minute...');
-                      await new Promise(resolve => setTimeout(resolve, 60 * 1000));
+                      console.log('Waiting for 6 seconds...');
+                      await new Promise(resolve => setTimeout(resolve, 6 * 1000));
                       
                       await page.screenshot({ path: `./screenshots/youtube_after_1_min_${Date.now()}.png` });
                   } catch (error) {
-                      console.error('Error loading page:', error.message);
+                      console.error('Error during page interaction:', error.message);
                       fs.writeFileSync('./screenshots/failure_page_content.html', await page.content());
                   }
               }
