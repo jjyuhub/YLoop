@@ -1,4 +1,4 @@
-name: YLoop
+name: YouTube Auto Visit
 
 on:
   schedule:
@@ -30,6 +30,12 @@ jobs:
           echo "Installing Puppeteer..."
           npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs debug
 
+      - name: Load YouTube cookies from GitHub Secret
+        run: |
+          echo "${{ secrets.YOUTUBE_COOKIES }}" | base64 --decode > cookies.json
+        env:
+          YOUTUBE_COOKIES: "${{ secrets.YOUTUBE_COOKIES }}"
+
       - name: Create Puppeteer script
         run: |
           mkdir -p scripts screenshots
@@ -48,6 +54,10 @@ jobs:
                   args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
               });
               const page = await browser.newPage();
+
+              console.log('Loading cookies...');
+              const cookies = JSON.parse(fs.readFileSync('./cookies.json', 'utf8'));
+              await page.setCookie(...cookies);
 
               console.log(`Visiting: ${videoUrl}`);
               try {
