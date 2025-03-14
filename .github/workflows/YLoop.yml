@@ -32,7 +32,7 @@ jobs:
 
       - name: Load YouTube cookies from GitHub Secret
         run: |
-          echo "${{ secrets.YOUTUBE_COOKIES }}" | base64 --decode > cookies.json
+          echo "${{ secrets.YOUTUBE_COOKIES }}" | base64 --decode > cookies.json || echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.json
         env:
           YOUTUBE_COOKIES: "${{ secrets.YOUTUBE_COOKIES }}"
 
@@ -62,10 +62,13 @@ jobs:
               console.log('Checking if user is logged in...');
               await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 60000 });
               const userLoggedIn = await page.evaluate(() => {
-                  return document.querySelector("a[href*='signout']") !== null;
+                  return document.querySelector("a[href*='signout'], a[href*='logout'], button[aria-label='Google Account']") !== null;
               });
               console.log(`User logged in: ${userLoggedIn}`);
-
+              if (!userLoggedIn) {
+                  console.warn('User is not logged in! Check your stored cookies.');
+              }
+              
               for (let i = 0; i < 3; i++) {
                   console.log(`Loop ${i + 1}: Visiting ${videoUrl}`);
                   try {
@@ -73,12 +76,23 @@ jobs:
                       console.log('Page loaded successfully.');
                       
                       console.log('Checking for Play button...');
-                      const playButtonSelector = 'button[aria-label="Play"]';
-                      if (await page.$(playButtonSelector)) {
-                          console.log('Play button found, clicking...');
-                          await page.click(playButtonSelector);
-                          console.log('Video started playing.');
-                      } else {
+                      const playButtonSelectors = [
+                          'button[aria-label="Play"]',
+                          'button[title="Play (k)"]',
+                          '.ytp-play-button'
+                      ];
+                      let playButton = null;
+                      for (const selector of playButtonSelectors) {
+                          playButton = await page.$(selector);
+                          if (playButton) {
+                              console.log(`Play button found using selector: ${selector}`);
+                              await playButton.click();
+                              console.log('Video started playing.');
+                              break;
+                          }
+                      }
+                      
+                      if (!playButton) {
                           console.warn('Play button not found, skipping play action.');
                       }
                       
@@ -91,6 +105,7 @@ jobs:
                   } catch (error) {
                       console.error('Error during page interaction:', error.message);
                       fs.writeFileSync('./screenshots/failure_page_content.html', await page.content());
+                      await page.screenshot({ path: './screenshots/failure_screenshot.png' });
                   }
               }
 
@@ -122,4 +137,6 @@ jobs:
           path: |
             screenshots/
             *.log
+            failure_page_content.html
+            failure_screenshot.png
           retention-days: 7
