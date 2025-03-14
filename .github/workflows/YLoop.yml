@@ -74,6 +74,7 @@ jobs:
                       console.log(`User logged in: ${userLoggedIn}`);
                       if (!userLoggedIn) {
                           console.warn('User is not logged in! Check your stored cookies.');
+                          console.log(document.cookies);
                       }
                       
                       console.log('Checking if video is already playing...');
