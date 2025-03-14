@@ -56,31 +56,17 @@ jobs:
               const page = await browser.newPage();
 
               console.log('Loading cookies...');
-              let cookies = JSON.parse(fs.readFileSync('./cookies.json', 'utf8'));
+              const cookies = JSON.parse(fs.readFileSync('./cookies.json', 'utf8'));
               await page.setCookie(...cookies);
               
               console.log('Checking if user is logged in...');
               await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 60000 });
-              let userLoggedIn = await page.evaluate(() => {
+              const userLoggedIn = await page.evaluate(() => {
                   return document.querySelector("a[href='/logout'], a[href*='signout'], a[href*='/logout'], button[aria-label='Google Account']") !== null;
               });
               console.log(`User logged in: ${userLoggedIn}`);
-              
               if (!userLoggedIn) {
-                  console.warn('User is not logged in! Reloading cookies and refreshing...');
-                  // Reload cookies and re-apply them
-                  cookies = JSON.parse(fs.readFileSync('./cookies.json', 'utf8'));
-                  await page.setCookie(...cookies);
-                  await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-                  userLoggedIn = await page.evaluate(() => {
-                      return document.querySelector("a[href='/logout'], a[href*='signout'], a[href*='/logout'], button[aria-label='Google Account']") !== null;
-                  });
-                  console.log(`User logged in after reload: ${userLoggedIn}`);
-                  if (!userLoggedIn) {
-                      console.error('User is still not logged in after reload. Exiting script.');
-                      await browser.close();
-                      process.exit(1);
-                  }
+                  console.warn('User is not logged in! Check your stored cookies.');
               }
               
               for (let i = 0; i < 3; i++) {
