@@ -2,7 +2,7 @@ name: YouTube Auto Visit
 
 on:
   schedule:
-    - cron: '*/1 * * * *'  # Run every 1 minute
+    - cron: '*/6 * * * *'  # Run every 6 minutes
   workflow_dispatch:
     inputs:
       video_url:
@@ -218,8 +218,8 @@ jobs:
                   return;
               }
 
-              // For 3 iterations, pick a random validated proxy.
-              for (let i = 0; i < 3; i++) {
+              // For 2*validProxies.length iterations, pick a random validated proxy.
+              for (let i = 0; i < 2*validProxies.length; i++) {
                   const proxy = validProxies[Math.floor(Math.random() * validProxies.length)];
                   console.log(`Loop ${i + 1}: Using proxy: ${proxy}`);
 
