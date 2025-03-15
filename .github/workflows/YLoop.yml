@@ -2,7 +2,7 @@ name: YouTube Auto Visit
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Run every 5 minutes
+    - cron: '*/15 * * * *'  # Run every 15 minutes
   workflow_dispatch:
     inputs:
       video_url:
@@ -156,7 +156,7 @@ jobs:
                   });
                   const page = await browser.newPage();
                   // Use a 60-second timeout for slower proxies.
-                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 60000 });
+                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 120000 });
                   const title = await page.title();
                   const responseTime = Date.now() - startTime;
                   if (!title || !title.includes("YouTube")) {
@@ -249,7 +249,7 @@ jobs:
                       for (let attempt = 1; attempt <= maxRetries; attempt++) {
                           try {
                               console.log(`Loop ${i + 1}: Attempt ${attempt} to visit ${videoUrl}`);
-                              await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 160000 });
+                              await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 320000 });
                               navigated = true;
                               break;
                           } catch (navError) {
