@@ -8,7 +8,7 @@ on:
       video_url:
         description: 'YouTube Video URL'
         required: true
-        default: 'https://www.youtube.com/watch?v=fuMMSpbPPQs&list=PLaHqwgkhNP9GzvPkj7maeLszT4Xp7F58F'
+        default: 'https://www.youtube.com/watch?v=Km-HyBwxcR8'
 
 jobs:
   visit-youtube:
@@ -332,7 +332,7 @@ jobs:
           }
 
           async function run() {
-              const videoUrl = process.argv[2] || "https://www.youtube.com/watch?v=fuMMSpbPPQs&list=PLaHqwgkhNP9GzvPkj7maeLszT4Xp7F58F";
+              const videoUrl = process.argv[2] || "https://www.youtube.com/watch?v=Km-HyBwxcR8";
               await visitYouTube(videoUrl);
           }
 
@@ -343,7 +343,7 @@ jobs:
 
       - name: Run Puppeteer script
         run: |
-          VIDEO_URL="${{ github.event.inputs.video_url || 'https://www.youtube.com/watch?v=fuMMSpbPPQs&list=PLaHqwgkhNP9GzvPkj7maeLszT4Xp7F58F' }}"
+          VIDEO_URL="${{ github.event.inputs.video_url || 'https://www.youtube.com/watch?v=Km-HyBwxcR8' }}"
           echo "Visiting: $VIDEO_URL"
           node scripts/youtube-visit.js "$VIDEO_URL" | tee script_output.log
 
