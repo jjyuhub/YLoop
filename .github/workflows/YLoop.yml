@@ -43,6 +43,32 @@ jobs:
               return new Promise(resolve => setTimeout(resolve, ms));
           }
 
+          // Function to click on cookie consent if present.
+          async function acceptCookies(page) {
+              try {
+                  // Look for any button with "agree" or "accept" in its inner text.
+                  const buttonHandle = await page.evaluateHandle(() => {
+                      const buttons = Array.from(document.querySelectorAll('button'));
+                      return buttons.find(btn => /agree|accept/i.test(btn.innerText));
+                  });
+                  if (buttonHandle) {
+                      console.log("Cookie consent button found. Clicking it...");
+                      await page.evaluate(() => {
+                          const buttons = Array.from(document.querySelectorAll('button'));
+                          const btn = buttons.find(btn => /agree|accept/i.test(btn.innerText));
+                          if (btn) btn.click();
+                      });
+                      // Give a moment for the consent to process.
+                      await sleep(2000);
+                      await safeScreenshot(page, `./screenshots/youtube_cookies_accepted_${Date.now()}.png`);
+                  } else {
+                      console.log("No cookie consent prompt found.");
+                  }
+              } catch (e) {
+                  console.error("Error while accepting cookies:", e.message);
+              }
+          }
+
           // Use a static list of known proxies.
           async function getProxies() {
               const staticProxies = [
@@ -109,8 +135,8 @@ jobs:
                       ]
                   });
                   const page = await browser.newPage();
-                  // Load YouTube's homepage with a short timeout.
-                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 15000 });
+                  // Load YouTube's homepage with a more lenient timeout (30 seconds).
+                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 30000 });
                   // Verify page title contains "YouTube".
                   const title = await page.title();
                   const responseTime = Date.now() - startTime;
@@ -224,6 +250,9 @@ jobs:
 
                       await safeScreenshot(page, `./screenshots/youtube_loaded_${Date.now()}.png`);
 
+                      // Accept cookie consent if prompted.
+                      await acceptCookies(page);
+
                       console.log("Checking if video is already playing...");
                       const isPlaying = await page.evaluate(() => {
                           const video = document.querySelector("video");
@@ -262,6 +291,12 @@ jobs:
                       }
 
                       await safeScreenshot(page, `./screenshots/youtube_finished_${Date.now()}.png`);
+
+                      // Save the final HTML page.
+                      const finalHtml = await page.content();
+                      const htmlFile = `./screenshots/final_page_${Date.now()}.html`;
+                      fs.writeFileSync(htmlFile, finalHtml);
+                      console.log(`Final HTML page saved: ${htmlFile}`);
 
                   } catch (error) {
                       console.error("Error during page interaction:", error.message);
