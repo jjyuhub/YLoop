@@ -2,7 +2,7 @@ name: YouTube Auto Visit
 
 on:
   schedule:
-    - cron: '*/10 * * * *'  # Run every 10 minutes
+    - cron: '*/1 * * * *'  # Run every 1 minute
   workflow_dispatch:
     inputs:
       video_url:
@@ -249,7 +249,7 @@ jobs:
                       for (let attempt = 1; attempt <= maxRetries; attempt++) {
                           try {
                               console.log(`Loop ${i + 1}: Attempt ${attempt} to visit ${videoUrl}`);
-                              await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                              await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 160000 });
                               navigated = true;
                               break;
                           } catch (navError) {
