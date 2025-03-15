@@ -50,26 +50,23 @@ jobs:
           async function getProxies() {
               let proxies = [];
               try {
-                  console.log("Fetching proxies from Proxyscrape...");
-                  const response1 = await axios.get('https://api.proxyscrape.com/?request=getproxies&proxytype=http&timeout=10000&ssl=yes');
-                  const list1 = response1.data.split("\n").map(p => p.trim()).filter(Boolean);
-                  console.log(`Proxyscrape returned ${list1.length} proxies.`);
+                  console.log("Fetching proxies from proxy-list.download...");
+                  const response1 = await axios.get('https://www.proxy-list.download/api/v1/get?type=http');
+                  const list1 = response1.data.split("\r\n").map(p => p.trim()).filter(Boolean);
+                  console.log(`proxy-list.download returned ${list1.length} proxies.`);
                   proxies.push(...list1);
               } catch (error) {
-                  console.error("Failed to fetch proxies from Proxyscrape:", error.message);
+                  console.error("Failed to fetch proxies from proxy-list.download:", error.message);
               }
               try {
-                  console.log("Fetching proxies from ProxyScan...");
-                  const response2 = await axios.get('https://www.proxyscan.io/api/proxy?last_check=3600&limit=20&ping=100&protocol=http');
-                  if (Array.isArray(response2.data)) {
-                      const list2 = response2.data.map(item => `${item.Ip}:${item.Port}`);
-                      console.log(`ProxyScan returned ${list2.length} proxies.`);
-                      proxies.push(...list2);
-                  }
+                  console.log("Fetching proxies from TheSpeedX/PROXY-List...");
+                  const response2 = await axios.get('https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt');
+                  const list2 = response2.data.split("\n").map(p => p.trim()).filter(Boolean);
+                  console.log(`TheSpeedX proxy list returned ${list2.length} proxies.`);
+                  proxies.push(...list2);
               } catch (error) {
-                  console.error("Failed to fetch proxies from ProxyScan:", error.message);
+                  console.error("Failed to fetch proxies from TheSpeedX/PROXY-List:", error.message);
               }
-              // Remove duplicates
               const uniqueProxies = [...new Set(proxies)];
               console.log(`Total unique proxies fetched: ${uniqueProxies.length}`);
               return uniqueProxies;
