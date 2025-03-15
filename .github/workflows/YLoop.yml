@@ -135,8 +135,8 @@ jobs:
                       ]
                   });
                   const page = await browser.newPage();
-                  // Load YouTube's homepage with a more lenient timeout (30 seconds).
-                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 30000 });
+                  // Load YouTube's homepage with a more lenient timeout (60 seconds).
+                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 60000 });
                   // Verify page title contains "YouTube".
                   const title = await page.title();
                   const responseTime = Date.now() - startTime;
