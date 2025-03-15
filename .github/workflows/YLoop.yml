@@ -43,22 +43,20 @@ jobs:
               return new Promise(resolve => setTimeout(resolve, ms));
           }
 
-          // Function to click on cookie consent if present.
+          // Function to click cookie consent if present.
           async function acceptCookies(page) {
               try {
-                  // Look for any button with "agree" or "accept" in its inner text.
                   const buttonHandle = await page.evaluateHandle(() => {
                       const buttons = Array.from(document.querySelectorAll('button'));
                       return buttons.find(btn => /agree|accept/i.test(btn.innerText));
                   });
                   if (buttonHandle) {
-                      console.log("Cookie consent button found. Clicking it...");
+                      console.log("Cookie consent prompt found. Clicking...");
                       await page.evaluate(() => {
-                          const buttons = Array.from(document.querySelectorAll('button'));
-                          const btn = buttons.find(btn => /agree|accept/i.test(btn.innerText));
+                          const btn = Array.from(document.querySelectorAll('button'))
+                              .find(btn => /agree|accept/i.test(btn.innerText));
                           if (btn) btn.click();
                       });
-                      // Give a moment for the consent to process.
                       await sleep(2000);
                       await safeScreenshot(page, `./screenshots/youtube_cookies_accepted_${Date.now()}.png`);
                   } else {
@@ -69,53 +67,75 @@ jobs:
               }
           }
 
-          // Use a static list of known proxies.
+          // Use the provided static proxy list.
           async function getProxies() {
               const staticProxies = [
-                  "18.169.83.87:1080",
-                  "20.27.86.185:8080",
-                  "120.28.210.205:9000",
-                  "37.46.62.98:8080",
-                  "36.89.251.14:8080",
-                  "52.26.114.229:1080",
-                  "177.234.250.58:999",
-                  "103.228.243.29:8080",
-                  "45.140.143.77:18080",
-                  "103.245.205.226:6969",
-                  "13.234.24.116:80",
-                  "45.22.209.157:8888",
+                  "49.249.83.13:8080",
+                  "67.43.227.226:28803",
+                  "38.123.220.16:8080",
+                  "45.70.202.161:999",
+                  "177.23.176.58:8080",
                   "103.85.117.6:8080",
-                  "38.250.119.207:999",
-                  "103.159.96.146:3128",
-                  "103.10.231.189:8080",
-                  "34.141.27.50:3128",
+                  "45.140.143.77:18080",
+                  "44.215.100.135:8118",
+                  "191.102.104.163:999",
+                  "72.10.164.178:9345",
+                  "113.160.210.180:8080",
+                  "202.29.215.78:8080",
+                  "113.160.133.32:8080",
+                  "38.86.249.2:999",
+                  "38.22.17.50:3128",
+                  "177.125.208.1:8080",
+                  "8.209.214.221:3389",
+                  "181.119.86.186:999",
+                  "38.65.172.4:999",
+                  "58.147.189.11:8080",
+                  "159.89.239.166:18098",
+                  "109.176.18.61:23501",
+                  "13.234.24.116:80",
+                  "5.78.124.240:40001",
+                  "202.148.15.90:8080",
+                  "103.169.254.11:6080",
+                  "170.80.78.211:8088",
+                  "67.43.227.228:17493",
+                  "186.166.142.82:999",
+                  "103.208.102.2:8080",
+                  "181.79.234.90:999",
+                  "37.157.219.207:3128",
+                  "124.217.44.253:8082",
                   "186.96.50.113:999",
-                  "15.206.25.41:1080",
-                  "103.144.181.74:80",
-                  "4.36.157.45:8080",
-                  "103.134.47.8:8080",
-                  "188.125.169.144:8080",
-                  "103.190.60.29:9090",
-                  "103.120.76.94:2024",
-                  "186.192.78.7:8080",
-                  "187.111.144.102:8080",
-                  "190.97.238.62:999",
-                  "201.222.28.37:8080",
-                  "103.143.168.58:84",
-                  "212.174.44.2:8080",
-                  "203.76.120.118:8080",
-                  "204.199.72.162:999",
-                  "31.40.248.2:8080",
-                  "191.253.39.82:8080",
-                  "202.40.185.247:100",
-                  "103.227.107.4:1111",
-                  "81.223.55.43:8080"
+                  "38.250.119.207:999",
+                  "157.20.244.77:8080",
+                  "213.239.221.24:8888",
+                  "109.176.18.28:27155",
+                  "52.26.114.229:3128",
+                  "188.125.169.67:8080",
+                  "38.86.249.30:999",
+                  "78.26.146.59:443",
+                  "177.234.250.58:999",
+                  "116.212.149.218:8080",
+                  "103.164.192.83:8080",
+                  "177.73.68.150:8080",
+                  "177.125.86.108:8080",
+                  "8.209.201.218:3389",
+                  "119.148.55.89:1419",
+                  "8.243.163.126:3128",
+                  "109.176.18.230:12300",
+                  "190.121.136.185:999",
+                  "103.156.86.85:7777",
+                  "109.176.18.154:34042",
+                  "190.52.100.211:999",
+                  "38.45.242.120:999",
+                  "188.132.222.15:8080",
+                  "189.51.168.106:999",
+                  "171.228.146.173:10089",
+                  "222.252.194.204:8080"
               ];
               console.log(`Using static proxy list with ${staticProxies.length} proxies.`);
               return staticProxies;
           }
 
-          // Enhanced test for a single proxy by checking navigation and page title.
+          // Enhanced test for a single proxy: attempt to load YouTube homepage and check title.
           async function testProxy(proxy) {
               let browser;
               try {
@@ -135,9 +155,8 @@ jobs:
                       ]
                   });
                   const page = await browser.newPage();
-                  // Load YouTube's homepage with a more lenient timeout (60 seconds).
-                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 60000 });
-                  // Verify page title contains "YouTube".
+                  // Use a 30-second timeout for slower proxies.
+                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 30000 });
                   const title = await page.title();
                   const responseTime = Date.now() - startTime;
                   if (!title || !title.includes("YouTube")) {
@@ -155,7 +174,7 @@ jobs:
               }
           }
 
-          // Rapidly test proxies using concurrency.
+          // Rapidly test proxies concurrently.
           async function validateProxies(proxies, concurrency = 50) {
               const validProxies = [];
               let index = 0;
@@ -188,7 +207,6 @@ jobs:
           }
 
           async function visitYouTube(videoUrl) {
-              // Get and validate the static proxies.
               const allProxies = await getProxies();
               if (allProxies.length === 0) {
                   console.warn("No proxies available. Exiting...");
@@ -200,7 +218,7 @@ jobs:
                   return;
               }
 
-              // Use a random validated proxy for each iteration (3 iterations).
+              // For 3 iterations, pick a random validated proxy.
               for (let i = 0; i < 3; i++) {
                   const proxy = validProxies[Math.floor(Math.random() * validProxies.length)];
                   console.log(`Loop ${i + 1}: Using proxy: ${proxy}`);
@@ -250,7 +268,7 @@ jobs:
 
                       await safeScreenshot(page, `./screenshots/youtube_loaded_${Date.now()}.png`);
 
-                      // Accept cookie consent if prompted.
+                      // Accept YouTube cookie prompt if it appears.
                       await acceptCookies(page);
 
                       console.log("Checking if video is already playing...");
