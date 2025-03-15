@@ -2,7 +2,7 @@ name: YouTube Auto Visit
 
 on:
   schedule:
-    - cron: '*/6 * * * *'  # Run every 6 minutes
+    - cron: '*/10 * * * *'  # Run every 6 minutes
   workflow_dispatch:
     inputs:
       video_url:
