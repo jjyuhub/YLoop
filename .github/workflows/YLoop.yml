@@ -72,6 +72,55 @@ jobs:
               return uniqueProxies;
           }
 
+          // Test a single proxy by launching a browser and visiting a lightweight page.
+          async function testProxy(proxy) {
+              let browser;
+              try {
+                  console.log(`Testing proxy ${proxy}...`);
+                  browser = await puppeteer.launch({
+                      headless: "new",
+                      ignoreHTTPSErrors: true,
+                      executablePath: require('puppeteer').executablePath(),
+                      args: [
+                          `--proxy-server=http://${proxy}`,
+                          '--ignore-certificate-errors',
+                          '--no-sandbox',
+                          '--disable-setuid-sandbox',
+                          '--disable-dev-shm-usage',
+                          '--disable-gpu'
+                      ]
+                  });
+                  const page = await browser.newPage();
+                  // Try to load YouTube's homepage with a short timeout.
+                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 15000 });
+                  await browser.close();
+                  console.log(`Proxy ${proxy} is valid.`);
+                  return true;
+              } catch (e) {
+                  console.error(`Proxy ${proxy} is invalid: ${e.message}`);
+                  if (browser) {
+                      try { await browser.close(); } catch (err) {}
+                  }
+                  return false;
+              }
+          }
+
+          // Validate a list of proxies by testing them, up to maxTests proxies.
+          async function validateProxies(proxies, maxTests = 50) {
+              const validProxies = [];
+              let count = 0;
+              for (const proxy of proxies) {
+                  if (count >= maxTests) break;
+                  count++;
+                  const isValid = await testProxy(proxy);
+                  if (isValid) {
+                      validProxies.push(proxy);
+                  }
+              }
+              console.log(`Total valid proxies found: ${validProxies.length}`);
+              return validProxies;
+          }
+
           // Helper function to safely take a screenshot
           async function safeScreenshot(page, path) {
               try {
@@ -83,23 +132,31 @@ jobs:
           }
 
           async function visitYouTube(videoUrl) {
-              const proxies = await getProxies();
-              if (proxies.length === 0) {
+              // Fetch and validate proxies before the main loop.
+              const allProxies = await getProxies();
+              if (allProxies.length === 0) {
                   console.warn("No proxies available. Exiting...");
                   return;
               }
+              const validProxies = await validateProxies(allProxies, 50);
+              if (validProxies.length === 0) {
+                  console.warn("No valid proxies found. Exiting...");
+                  return;
+              }
 
-              // Loop through 3 iterations, using a random proxy each time.
+              // Loop through 3 iterations, using a random validated proxy each time.
               for (let i = 0; i < 3; i++) {
-                  const proxy = proxies[Math.floor(Math.random() * proxies.length)];
+                  const proxy = validProxies[Math.floor(Math.random() * validProxies.length)];
                   console.log(`Loop ${i + 1}: Using proxy: ${proxy}`);
 
                   console.log('Launching browser with proxy...');
                   const browser = await puppeteer.launch({
                       headless: "new",
+                      ignoreHTTPSErrors: true,
                       executablePath: require('puppeteer').executablePath(),
                       args: [
                           `--proxy-server=http://${proxy}`,
+                          '--ignore-certificate-errors',
                           '--no-sandbox',
                           '--disable-setuid-sandbox',
                           '--disable-dev-shm-usage',
