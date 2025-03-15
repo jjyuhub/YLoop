@@ -72,11 +72,12 @@ jobs:
               return uniqueProxies;
           }
 
-          // Test a single proxy by launching a browser and visiting a lightweight page.
+          // Enhanced test for a single proxy by checking navigation and page title.
           async function testProxy(proxy) {
               let browser;
               try {
                   console.log(`Testing proxy ${proxy}...`);
+                  const startTime = Date.now();
                   browser = await puppeteer.launch({
                       headless: "new",
                       ignoreHTTPSErrors: true,
@@ -93,8 +94,14 @@ jobs:
                   const page = await browser.newPage();
                   // Try to load YouTube's homepage with a short timeout.
                   await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 15000 });
+                  // Extra test: Check that the page title contains "YouTube"
+                  const title = await page.title();
+                  const responseTime = Date.now() - startTime;
+                  if (!title || !title.includes("YouTube")) {
+                      throw new Error(`Page title check failed. Got: ${title}`);
+                  }
+                  console.log(`Proxy ${proxy} is valid. Response time: ${responseTime}ms`);
                   await browser.close();
-                  console.log(`Proxy ${proxy} is valid.`);
                   return true;
               } catch (e) {
                   console.error(`Proxy ${proxy} is invalid: ${e.message}`);
