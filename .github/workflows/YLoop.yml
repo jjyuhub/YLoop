@@ -27,7 +27,7 @@ jobs:
         run: |
           echo "Initializing npm project..."
           npm init -y
-          echo "Installing Puppeteer and Axios..."
+          echo "Installing Puppeteer, Axios and dependencies..."
           npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs debug axios
 
       - name: Create Puppeteer script
@@ -46,16 +46,33 @@ jobs:
               return new Promise(resolve => setTimeout(resolve, ms));
           }
 
-          // Fetch dynamic list of proxies from an API
+          // Fetch proxies from two sources and merge them.
           async function getProxies() {
+              let proxies = [];
               try {
-                  console.log("Fetching proxy list...");
-                  const response = await axios.get('https://www.proxy-list.download/api/v1/get?type=http');
-                  return response.data.split("\r\n").filter(proxy => proxy.trim() !== "");
+                  console.log("Fetching proxies from Proxyscrape...");
+                  const response1 = await axios.get('https://api.proxyscrape.com/?request=getproxies&proxytype=http&timeout=10000&ssl=yes');
+                  const list1 = response1.data.split("\n").map(p => p.trim()).filter(Boolean);
+                  console.log(`Proxyscrape returned ${list1.length} proxies.`);
+                  proxies.push(...list1);
               } catch (error) {
-                  console.error("Failed to fetch proxy list:", error.message);
-                  return [];
+                  console.error("Failed to fetch proxies from Proxyscrape:", error.message);
               }
+              try {
+                  console.log("Fetching proxies from ProxyScan...");
+                  const response2 = await axios.get('https://www.proxyscan.io/api/proxy?last_check=3600&limit=20&ping=100&protocol=http');
+                  if (Array.isArray(response2.data)) {
+                      const list2 = response2.data.map(item => `${item.Ip}:${item.Port}`);
+                      console.log(`ProxyScan returned ${list2.length} proxies.`);
+                      proxies.push(...list2);
+                  }
+              } catch (error) {
+                  console.error("Failed to fetch proxies from ProxyScan:", error.message);
+              }
+              // Remove duplicates
+              const uniqueProxies = [...new Set(proxies)];
+              console.log(`Total unique proxies fetched: ${uniqueProxies.length}`);
+              return uniqueProxies;
           }
 
           // Helper function to safely take a screenshot
