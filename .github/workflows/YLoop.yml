@@ -155,8 +155,8 @@ jobs:
                       ]
                   });
                   const page = await browser.newPage();
-                  // Use a 30-second timeout for slower proxies.
-                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 30000 });
+                  // Use a 60-second timeout for slower proxies.
+                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 60000 });
                   const title = await page.title();
                   const responseTime = Date.now() - startTime;
                   if (!title || !title.includes("YouTube")) {
@@ -302,8 +302,8 @@ jobs:
                           console.log("Video is already playing. Skipping Play button click.");
                       }
 
-                      console.log("Watching for 31 seconds with periodic screenshots...");
-                      for (let t = 5; t <= 31; t += 5) {
+                      console.log("Watching for 41 seconds with periodic screenshots...");
+                      for (let t = 5; t <= 41; t += 5) {
                           await sleep(5000);
                           await safeScreenshot(page, `./screenshots/youtube_watch_${t}s_${Date.now()}.png`);
                       }
