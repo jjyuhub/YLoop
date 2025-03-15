@@ -41,7 +41,7 @@ jobs:
 
           puppeteer.use(StealthPlugin());
 
-          // Helper sleep function to wait for a specified time (in ms)
+          // Helper sleep function
           function sleep(ms) {
               return new Promise(resolve => setTimeout(resolve, ms));
           }
@@ -92,9 +92,9 @@ jobs:
                       ]
                   });
                   const page = await browser.newPage();
-                  // Try to load YouTube's homepage with a short timeout.
+                  // Load YouTube's homepage with a short timeout.
                   await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 15000 });
-                  // Extra test: Check that the page title contains "YouTube"
+                  // Extra check: verify page title contains "YouTube"
                   const title = await page.title();
                   const responseTime = Date.now() - startTime;
                   if (!title || !title.includes("YouTube")) {
@@ -112,23 +112,29 @@ jobs:
               }
           }
 
-          // Validate a list of proxies by testing them, up to maxTests proxies.
-          async function validateProxies(proxies, maxTests = 50) {
+          // Rapidly test proxies using a worker pool (concurrency controlled).
+          async function validateProxies(proxies, concurrency = 50) {
               const validProxies = [];
-              let count = 0;
-              for (const proxy of proxies) {
-                  if (count >= maxTests) break;
-                  count++;
-                  const isValid = await testProxy(proxy);
-                  if (isValid) {
-                      validProxies.push(proxy);
+              let index = 0;
+              async function worker() {
+                  while (index < proxies.length) {
+                      const currentIndex = index++;
+                      const proxy = proxies[currentIndex];
+                      if (await testProxy(proxy)) {
+                          validProxies.push(proxy);
+                      }
                   }
               }
+              const workers = [];
+              for (let i = 0; i < concurrency; i++) {
+                  workers.push(worker());
+              }
+              await Promise.all(workers);
               console.log(`Total valid proxies found: ${validProxies.length}`);
               return validProxies;
           }
 
-          // Helper function to safely take a screenshot
+          // Helper function to safely take a screenshot.
           async function safeScreenshot(page, path) {
               try {
                   await page.screenshot({ path });
@@ -145,13 +151,13 @@ jobs:
                   console.warn("No proxies available. Exiting...");
                   return;
               }
-              const validProxies = await validateProxies(allProxies, 50);
+              const validProxies = await validateProxies(allProxies, 50);  // Adjust concurrency if needed.
               if (validProxies.length === 0) {
                   console.warn("No valid proxies found. Exiting...");
                   return;
               }
 
-              // Loop through 3 iterations, using a random validated proxy each time.
+              // Use the validated proxies in the main loop (3 iterations).
               for (let i = 0; i < 3; i++) {
                   const proxy = validProxies[Math.floor(Math.random() * validProxies.length)];
                   console.log(`Loop ${i + 1}: Using proxy: ${proxy}`);
@@ -172,12 +178,12 @@ jobs:
                   });
                   const page = await browser.newPage();
 
-                  // Log page-level errors
+                  // Log page-level errors.
                   page.on('error', error => console.error('Page error:', error));
                   page.on('pageerror', error => console.error('Page error:', error));
 
                   try {
-                      // Retry navigation up to 3 times if it times out
+                      // Retry navigation up to 3 times if it times out.
                       const maxRetries = 3;
                       let navigated = false;
                       for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -233,7 +239,7 @@ jobs:
                           console.log('Video is already playing. Skipping Play button click.');
                       }
 
-                      // Take periodic screenshots every 5 seconds while watching for a total of 31 seconds
+                      // Take periodic screenshots every 5 seconds while watching for a total of 31 seconds.
                       console.log('Watching for 31 seconds with periodic screenshots...');
                       for (let t = 5; t <= 31; t += 5) {
                           await sleep(5000);
