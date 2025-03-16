@@ -302,8 +302,8 @@ jobs:
                           console.log("Video is already playing. Skipping Play button click.");
                       }
 
-                      console.log("Watching for 41 seconds with periodic screenshots...");
-                      for (let t = 5; t <= 41; t += 5) {
+                      console.log("Watching for 410 seconds with periodic screenshots...");
+                      for (let t = 5; t <= 410; t += 5) {
                           await sleep(5000);
                           await safeScreenshot(page, `./screenshots/youtube_watch_${t}s_${Date.now()}.png`);
                       }
