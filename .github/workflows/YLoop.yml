@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           npm init -y
-          npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs
+          npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs axios
 
       - name: Create Puppeteer script
         run: |
@@ -35,6 +35,7 @@ jobs:
           const puppeteer = require('puppeteer-extra');
           const StealthPlugin = require('puppeteer-extra-plugin-stealth');
           const fs = require('fs');
+          const axios = require('axios');
 
           // Use stealth plugin to avoid bot detection.
           puppeteer.use(StealthPlugin());
@@ -78,7 +79,7 @@ jobs:
               }
           }
 
-          // ----------------------- Proxy Fetch & Validation -----------------------
+          // ----------------------- Proxy Fetch & Fast Validation -----------------------
 
           // Fetch proxies from multiple sources.
           async function fetchProxies() {
@@ -124,59 +125,49 @@ jobs:
               return results;
           }
 
-          // Test a single proxy by launching a browser and verifying the YouTube homepage title.
+          // Test a single proxy using Axios for a lightweight HTTP request.
           async function testProxy(proxy) {
-              let browser;
+              const [host, portStr] = proxy.split(':');
+              const port = parseInt(portStr, 10);
               try {
                   console.log(`Testing proxy ${proxy}...`);
                   const startTime = Date.now();
-                  browser = await puppeteer.launch({
-                      headless: "new",
-                      ignoreHTTPSErrors: true,
-                      executablePath: require('puppeteer').executablePath(),
-                      args: [
-                          `--proxy-server=http://${proxy}`,
-                          '--ignore-certificate-errors',
-                          '--no-sandbox',
-                          '--disable-setuid-sandbox',
-                          '--disable-dev-shm-usage',
-                          '--disable-gpu'
-                      ]
+                  const response = await axios.get('https://www.youtube.com', {
+                      timeout: 10000,
+                      proxy: { host, port },
+                      headers: {
+                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+                      }
                   });
-                  const page = await browser.newPage();
-                  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 120000 });
-                  const title = await page.title();
                   const responseTime = Date.now() - startTime;
-                  if (!title || !title.includes("YouTube")) {
-                      throw new Error(`Page title check failed. Got: ${title}`);
+                  if (response.status === 200 && response.data.includes("YouTube")) {
+                      console.log(`Proxy ${proxy} is valid. Response time: ${responseTime}ms`);
+                      return true;
+                  } else {
+                      console.error(`Proxy ${proxy} invalid: status ${response.status}`);
+                      return false;
                   }
-                  console.log(`Proxy ${proxy} is valid. Response time: ${responseTime}ms`);
-                  await browser.close();
-                  return true;
               } catch (e) {
                   console.error(`Proxy ${proxy} is invalid: ${e.message}`);
-                  if (browser) {
-                      try { await browser.close(); } catch (err) {}
-                  }
                   return false;
               }
           }
 
-          // Verify a proxy by running 10 consecutive tests.
+          // Verify a proxy by running 10 tests concurrently.
           async function verifyReliableProxy(proxy) {
               const RELIABILITY_CHECKS = 10;
-              for (let i = 0; i < RELIABILITY_CHECKS; i++) {
-                  const result = await testProxy(proxy);
-                  if (!result) {
-                      console.log(`Proxy ${proxy} failed reliability check ${i + 1}/${RELIABILITY_CHECKS}`);
-                      return false;
-                  }
+              const tests = Array.from({length: RELIABILITY_CHECKS}, () => testProxy(proxy));
+              const results = await Promise.all(tests);
+              if (results.every(r => r === true)) {
+                  console.log(`Proxy ${proxy} passed ${RELIABILITY_CHECKS} reliability tests.`);
+                  return proxy;
+              } else {
+                  console.log(`Proxy ${proxy} failed reliability tests.`);
+                  return null;
               }
-              console.log(`Proxy ${proxy} passed ${RELIABILITY_CHECKS} reliability tests.`);
-              return true;
           }
 
-          // Validate proxies: first an initial test, then verify reliability.
+          // Validate proxies: initial test then reliability test.
           async function validateProxies(concurrency = 50) {
               const allProxies = await fetchProxies();
               if (allProxies.length === 0) {
@@ -185,9 +176,7 @@ jobs:
               }
 
               console.log("Starting initial proxy tests...");
-              const initialTasks = allProxies.map(proxy => async () => {
-                  return (await testProxy(proxy)) ? proxy : null;
-              });
+              const initialTasks = allProxies.map(proxy => async () => (await testProxy(proxy)) ? proxy : null);
               const initialResults = await runWithConcurrency(initialTasks, concurrency);
               const validProxies = initialResults.filter(p => p);
               console.log(`Proxies passing initial test: ${validProxies.length}`);
@@ -198,9 +187,7 @@ jobs:
               }
 
               console.log("Starting reliability tests (10 tests per proxy)...");
-              const reliableTasks = validProxies.map(proxy => async () => {
-                  return (await verifyReliableProxy(proxy)) ? proxy : null;
-              });
+              const reliableTasks = validProxies.map(proxy => async () => await verifyReliableProxy(proxy));
               const reliableResults = await runWithConcurrency(reliableTasks, concurrency);
               const reliableProxies = reliableResults.filter(p => p);
               console.log(`Total reliable proxies found: ${reliableProxies.length}`);
