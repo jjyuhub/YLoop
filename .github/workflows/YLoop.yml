@@ -12,10 +12,7 @@ on:
 
 jobs:
   visit-youtube:
-    strategy:
-      matrix:
-        os: [windows-latest, macos-14, macos-13, ubuntu-latest, ubuntu-arm64]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -26,15 +23,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: |
-          npm init -y
-          npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs axios
-
-      - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
+      - name: Install dependencies
         run: |
           npm init -y
           npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs axios
@@ -46,32 +35,307 @@ jobs:
           const puppeteer = require('puppeteer-extra');
           const StealthPlugin = require('puppeteer-extra-plugin-stealth');
           const fs = require('fs');
+          const axios = require('axios');
 
+          // Use stealth plugin to avoid bot detection.
           puppeteer.use(StealthPlugin());
 
-          async function visitYouTube(videoUrl) {
-              console.log(`Visiting YouTube: ${videoUrl}`);
+          // Helper sleep function.
+          function sleep(ms) {
+              return new Promise(resolve => setTimeout(resolve, ms));
+          }
 
-              const browser = await puppeteer.launch({
-                  headless: "new",
-                  ignoreHTTPSErrors: true,
-                  executablePath: require('puppeteer').executablePath(),
-                  args: [
-                      '--no-sandbox',
-                      '--disable-setuid-sandbox',
-                      '--disable-dev-shm-usage',
-                      '--disable-gpu'
-                  ]
-              });
-
-              const page = await browser.newPage();
+          // Helper to safely take a screenshot.
+          async function safeScreenshot(page, path) {
               try {
-                  await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-                  await page.screenshot({ path: `./screenshots/youtube_${Date.now()}.png` });
-              } catch (error) {
-                  console.error("Error visiting YouTube:", error.message);
-              } finally {
-                  await browser.close();
+                  await page.screenshot({ path });
+                  console.log(`Screenshot taken: ${path}`);
+              } catch (err) {
+                  console.error(`Failed to take screenshot ${path}: ${err.message}`);
+              }
+          }
+
+          // Accept cookie consent if present.
+          async function acceptCookies(page) {
+              try {
+                  const buttonHandle = await page.evaluateHandle(() => {
+                      const buttons = Array.from(document.querySelectorAll('button'));
+                      return buttons.find(btn => /agree|accept/i.test(btn.innerText));
+                  });
+                  if (buttonHandle) {
+                      console.log("Cookie consent prompt found. Clicking...");
+                      await page.evaluate(() => {
+                          const btn = Array.from(document.querySelectorAll('button'))
+                              .find(btn => /agree|accept/i.test(btn.innerText));
+                          if (btn) btn.click();
+                      });
+                      await sleep(2000);
+                      await safeScreenshot(page, `./screenshots/youtube_cookies_accepted_${Date.now()}.png`);
+                  } else {
+                      console.log("No cookie consent prompt found.");
+                  }
+              } catch (e) {
+                  console.error("Error while accepting cookies:", e.message);
+              }
+          }
+
+          // ----------------------- Proxy Fetch & Fast Validation -----------------------
+
+          // Fetch proxies from multiple sources.
+          async function fetchProxies() {
+              const sources = [
+                  "https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies/http.txt",
+                  "https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt",
+                  "https://www.proxy-list.download/api/v1/get?type=https",
+                  "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+                  "https://api.proxyscrape.com/?request=displayproxies&proxytype=https",
+                  "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/proxy.txt"
+              ];
+              let allProxies = [];
+              for (const url of sources) {
+                  try {
+                      const res = await fetch(url, { timeout: 100000 });
+                      const text = await res.text();
+                      const proxies = text.split("\n").map(p => p.trim()).filter(p => p);
+                      console.log(`Fetched ${proxies.length} proxies from ${url}`);
+                      allProxies = allProxies.concat(proxies);
+                  } catch (e) {
+                      console.error(`Error fetching proxies from ${url}: ${e.message}`);
+                  }
+              }
+              // Remove duplicates.
+              const uniqueProxies = [...new Set(allProxies)];
+              console.log(`Total unique proxies fetched: ${uniqueProxies.length}`);
+              return uniqueProxies;
+          }
+
+          // A simple concurrency runner.
+          async function runWithConcurrency(tasks, concurrency) {
+              let index = 0;
+              const results = [];
+              async function worker() {
+                  while (index < tasks.length) {
+                      const current = tasks[index++];
+                      results.push(await current());
+                  }
+              }
+              const workers = [];
+              for (let i = 0; i < concurrency; i++) {
+                  workers.push(worker());
+              }
+              await Promise.all(workers);
+              return results;
+          }
+
+          // Test a single proxy using Axios for a lightweight HTTP request.
+          async function testProxy(proxy) {
+              const [host, portStr] = proxy.split(':');
+              const port = parseInt(portStr, 10);
+              try {
+                  console.log(`Testing proxy ${proxy}...`);
+                  const startTime = Date.now();
+                  const response = await axios.get('https://www.youtube.com', {
+                      timeout: 100000,
+                      proxy: { host, port },
+                      headers: {
+                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+                      }
+                  });
+                  const responseTime = Date.now() - startTime;
+                  if (response.status === 200 && response.data.includes("YouTube")) {
+                      console.log(`Proxy ${proxy} is valid. Response time: ${responseTime}ms`);
+                      return true;
+                  } else {
+                      console.error(`Proxy ${proxy} invalid: status ${response.status}`);
+                      return false;
+                  }
+              } catch (e) {
+                  console.error(`Proxy ${proxy} is invalid: ${e.message}`);
+                  return false;
+              }
+          }
+
+          // Verify a proxy by running 10 tests concurrently.
+          async function verifyReliableProxy(proxy) {
+              const RELIABILITY_CHECKS = 10;
+              const tests = Array.from({length: RELIABILITY_CHECKS}, () => testProxy(proxy));
+              const results = await Promise.all(tests);
+              if (results.every(r => r === true)) {
+                  console.log(`Proxy ${proxy} passed ${RELIABILITY_CHECKS} reliability tests.`);
+                  return proxy;
+              } else {
+                  console.log(`Proxy ${proxy} failed reliability tests.`);
+                  return null;
+              }
+          }
+
+          // Validate proxies: initial test then reliability test.
+          async function validateProxies(concurrency = 50) {
+              const allProxies = await fetchProxies();
+              if (allProxies.length === 0) {
+                  console.warn("No proxies fetched. Exiting proxy validation.");
+                  return [];
+              }
+
+              console.log("Starting initial proxy tests...");
+              const initialTasks = allProxies.map(proxy => async () => (await testProxy(proxy)) ? proxy : null);
+              const initialResults = await runWithConcurrency(initialTasks, concurrency);
+              const validProxies = initialResults.filter(p => p);
+              console.log(`Proxies passing initial test: ${validProxies.length}`);
+
+              if (validProxies.length === 0) {
+                  console.warn("No proxies passed the initial test. Exiting.");
+                  return [];
+              }
+
+              console.log("Starting reliability tests (10 tests per proxy)...");
+              const reliableTasks = validProxies.map(proxy => async () => await verifyReliableProxy(proxy));
+              const reliableResults = await runWithConcurrency(reliableTasks, concurrency);
+              const reliableProxies = reliableResults.filter(p => p);
+              console.log(`Total reliable proxies found: ${reliableProxies.length}`);
+              return reliableProxies;
+          }
+
+          // ----------------------- YouTube Visit Logic -----------------------
+
+          async function visitYouTube(videoUrl) {
+              const reliableProxies = await validateProxies(50);
+              if (reliableProxies.length === 0) {
+                  console.warn("No reliable proxies found. Exiting...");
+                  return;
+              }
+
+              // Iterate over all reliable proxies.
+              for (const proxy of reliableProxies) {
+                  console.log(`Using proxy: ${proxy}`);
+
+                  console.log('Launching browser with proxy...');
+                  const browser = await puppeteer.launch({
+                      headless: "new",
+                      ignoreHTTPSErrors: true,
+                      executablePath: require('puppeteer').executablePath(),
+                      args: [
+                          `--proxy-server=http://${proxy}`,
+                          '--ignore-certificate-errors',
+                          '--no-sandbox',
+                          '--disable-setuid-sandbox',
+                          '--disable-dev-shm-usage',
+                          '--disable-gpu'
+                      ]
+                  });
+                  const page = await browser.newPage();
+
+                  // Flag to indicate if we need to switch proxy immediately.
+                  let shouldSwitch = false;
+
+                  // Listen for page errors and set the flag if the specific error is detected.
+                  page.on('pageerror', error => {
+                      console.error('Page error:', error);
+                      if (error.message.includes("solveSimpleChallenge is not defined")) {
+                          console.log("Encountered solveSimpleChallenge error. Switching proxy immediately.");
+                          shouldSwitch = true;
+                      }
+                  });
+
+                  try {
+                      // Retry navigation up to 3 times.
+                      const maxRetries = 3;
+                      let navigated = false;
+                      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                          try {
+                              console.log(`Attempt ${attempt} to visit ${videoUrl}`);
+                              await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 320000 });
+                              if (shouldSwitch) {
+                                  throw new Error("Switching proxy due to solveSimpleChallenge error");
+                              }
+                              navigated = true;
+                              break;
+                          } catch (navError) {
+                              console.error(`Attempt ${attempt} failed: ${navError.message}`);
+                              if (attempt < maxRetries) {
+                                  console.log("Retrying in 5 seconds...");
+                                  await sleep(5000);
+                              } else {
+                                  throw navError;
+                              }
+                          }
+                      }
+                      if (!navigated) {
+                          throw new Error("Navigation failed after maximum retries.");
+                      }
+
+                      await safeScreenshot(page, `./screenshots/youtube_loaded_${Date.now()}.png`);
+
+                      // Accept YouTube cookie prompt if it appears.
+                      await acceptCookies(page);
+                      if (shouldSwitch) {
+                          throw new Error("Switching proxy due to solveSimpleChallenge error");
+                      }
+
+                      console.log("Checking if video is already playing...");
+                      const isPlaying = await page.evaluate(() => {
+                          const video = document.querySelector("video");
+                          return video && !video.paused;
+                      });
+
+                      if (!isPlaying) {
+                          console.log("Video is not playing. Attempting to click Play button...");
+                          const playButtonSelectors = [
+                              'button[aria-label="Play"]',
+                              'button[title="Play (k)"]',
+                              '.ytp-play-button'
+                          ];
+                          let playButton = null;
+                          for (const selector of playButtonSelectors) {
+                              playButton = await page.$(selector);
+                              if (playButton) {
+                                  console.log(`Play button found using selector: ${selector}`);
+                                  await playButton.click();
+                                  console.log("Video started playing.");
+                                  await safeScreenshot(page, `./screenshots/youtube_play_clicked_${Date.now()}.png`);
+                                  break;
+                              }
+                          }
+                          if (!playButton) {
+                              console.warn("Play button not found, skipping play action.");
+                          }
+                      } else {
+                          console.log("Video is already playing. Skipping Play button click.");
+                      }
+                      if (shouldSwitch) {
+                          throw new Error("Switching proxy due to solveSimpleChallenge error");
+                      }
+
+                      console.log("Watching for 410 seconds with periodic screenshots...");
+                      for (let t = 5; t <= 410; t += 5) {
+                          if (shouldSwitch) {
+                              console.log("Switching proxy due to solveSimpleChallenge error during watch loop.");
+                              throw new Error("Switching proxy due to solveSimpleChallenge error");
+                          }
+                          await sleep(5000);
+                          await safeScreenshot(page, `./screenshots/youtube_watch_${t}s_${Date.now()}.png`);
+                      }
+
+                      await safeScreenshot(page, `./screenshots/youtube_finished_${Date.now()}.png`);
+
+                      // Save the final HTML page.
+                      const finalHtml = await page.content();
+                      const htmlFile = `./screenshots/final_page_${Date.now()}.html`;
+                      fs.writeFileSync(htmlFile, finalHtml);
+                      console.log(`Final HTML page saved: ${htmlFile}`);
+
+                  } catch (error) {
+                      console.error("Error during page interaction:", error.message);
+                      try {
+                          fs.writeFileSync("./screenshots/failure_page_content.html", await page.content());
+                      } catch (e) {
+                          console.error("Failed to save failure page content:", e.message);
+                      }
+                      await safeScreenshot(page, "./screenshots/failure_screenshot.png");
+                  } finally {
+                      console.log("Closing browser...");
+                      await browser.close();
+                  }
               }
           }
 
@@ -80,7 +344,9 @@ jobs:
               await visitYouTube(videoUrl);
           }
 
-          run().catch(console.error);
+          run().catch(error => {
+              console.error("Script failed:", error.message);
+          });
           EOL
 
       - name: Run Puppeteer script
@@ -93,8 +359,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: youtube-debug-artifacts-${{ matrix.os }}
+          name: youtube-debug-artifacts
           path: |
             screenshots/
             *.log
+            failure_page_content.html
+            failure_screenshot.png
           retention-days: 7
