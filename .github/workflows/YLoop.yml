@@ -84,6 +84,8 @@ jobs:
           // Fetch proxies from multiple sources.
           async function fetchProxies() {
               const sources = [
+                  "https://raw.githubusercontent.com/monosans/proxy-list/main/proxy-list.txt",
+                  "https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt",
                   "https://www.proxy-list.download/api/v1/get?type=https",
                   "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
                   "https://api.proxyscrape.com/?request=displayproxies&proxytype=https",
