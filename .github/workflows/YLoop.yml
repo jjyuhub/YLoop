@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           npm init -y
-          npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs debug
+          npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs
 
       - name: Create Puppeteer script
         run: |
@@ -36,6 +36,7 @@ jobs:
           const StealthPlugin = require('puppeteer-extra-plugin-stealth');
           const fs = require('fs');
 
+          // Use stealth plugin to avoid bot detection.
           puppeteer.use(StealthPlugin());
 
           // Helper sleep function.
@@ -43,7 +44,17 @@ jobs:
               return new Promise(resolve => setTimeout(resolve, ms));
           }
 
-          // Function to click cookie consent if present.
+          // Helper to safely take a screenshot.
+          async function safeScreenshot(page, path) {
+              try {
+                  await page.screenshot({ path });
+                  console.log(`Screenshot taken: ${path}`);
+              } catch (err) {
+                  console.error(`Failed to take screenshot ${path}: ${err.message}`);
+              }
+          }
+
+          // Accept cookie consent if present.
           async function acceptCookies(page) {
               try {
                   const buttonHandle = await page.evaluateHandle(() => {
@@ -67,77 +78,53 @@ jobs:
               }
           }
 
-          // Use the provided static proxy list.
-          async function getProxies() {
-          const staticProxies = [
-              "45.123.142.100:8181",
-              "15.206.25.41:3128",
-              "20.27.86.185:8080",
-              "46.161.194.134:3128",
-              "103.144.147.18:8080",
-              "27.147.175.115:8080",
-              "103.156.161.193:8080",
-              "65.1.244.232:80",
-              "103.214.9.97:3128",
-              "3.10.93.50:1080",
-              "91.132.132.188:3128",
-              "187.19.200.217:8090",
-              "157.100.56.47:999",
-              "72.10.164.178:32183",
-              "190.12.95.170:47029",
-              "202.148.15.90:8080",
-              "103.165.157.248:8090",
-              "103.133.61.165:1111",
-              "38.22.17.50:3128",
-              "103.169.254.11:6080",
-              "181.215.253.112:5001",
-              "23.122.184.9:8888",
-              "46.55.143.145:8080",
-              "41.65.236.47:1981",
-              "177.19.167.242:80",
-              "130.36.36.29:443",
-              "188.132.221.22:8080",
-              "67.43.236.21:4673",
-              "103.163.103.64:8080",
-              "103.154.77.48:89",
-              "191.52.236.39:8080",
-              "27.79.236.80:16000",
-              "85.62.10.87:8080",
-              "188.132.222.15:8080",
-              "103.48.71.142:83",
-              "45.5.116.144:999",
-              "203.161.30.138:8070",
-              "186.26.92.180:58339",
-              "45.238.112.229:56789",
-              "188.132.150.77:8080",
-              "103.80.110.190:8080",
-              "24.144.94.90:8080",
-              "187.86.159.54:3128",
-              "103.169.255.203:6080",
-              "8.243.163.126:3128",
-              "103.132.54.150:8080",
-              "45.191.4.253:8080",
-              "49.49.60.206:8080",
-              "208.87.243.199:7878",
-              "67.43.227.226:24837",
-              "45.124.170.5:8080",
-              "45.140.143.77:18080",
-              "203.74.125.18:8888",
-              "31.145.149.75:9090",
-              "142.93.211.107:3128",
-              "67.43.228.250:33235",
-              "160.20.55.235:8080",
-              "103.67.84.146:8080",
-              "177.234.226.83:1994",
-              "44.215.100.135:8118",
-              "117.103.68.38:9941",
-              "103.189.116.133:8080"
-          ];
-              console.log(`Using static proxy list with ${staticProxies.length} proxies.`);
-              return staticProxies;
+          // ----------------------- Proxy Fetch & Validation -----------------------
+
+          // Fetch proxies from multiple sources.
+          async function fetchProxies() {
+              const sources = [
+                  "https://www.proxy-list.download/api/v1/get?type=https",
+                  "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+                  "https://api.proxyscrape.com/?request=displayproxies&proxytype=https",
+                  "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/proxy.txt"
+              ];
+              let allProxies = [];
+              for (const url of sources) {
+                  try {
+                      const res = await fetch(url, { timeout: 10000 });
+                      const text = await res.text();
+                      const proxies = text.split("\n").map(p => p.trim()).filter(p => p);
+                      console.log(`Fetched ${proxies.length} proxies from ${url}`);
+                      allProxies = allProxies.concat(proxies);
+                  } catch (e) {
+                      console.error(`Error fetching proxies from ${url}: ${e.message}`);
+                  }
+              }
+              // Remove duplicates.
+              const uniqueProxies = [...new Set(allProxies)];
+              console.log(`Total unique proxies fetched: ${uniqueProxies.length}`);
+              return uniqueProxies;
           }
 
-          // Enhanced test for a single proxy: attempt to load YouTube homepage and check title.
+          // A simple concurrency runner.
+          async function runWithConcurrency(tasks, concurrency) {
+              let index = 0;
+              const results = [];
+              async function worker() {
+                  while (index < tasks.length) {
+                      const current = tasks[index++];
+                      results.push(await current());
+                  }
+              }
+              const workers = [];
+              for (let i = 0; i < concurrency; i++) {
+                  workers.push(worker());
+              }
+              await Promise.all(workers);
+              return results;
+          }
+
+          // Test a single proxy by launching a browser and verifying the YouTube homepage title.
           async function testProxy(proxy) {
               let browser;
               try {
@@ -157,7 +144,6 @@ jobs:
                       ]
                   });
                   const page = await browser.newPage();
-                  // Use a 60-second timeout for slower proxies.
                   await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 120000 });
                   const title = await page.title();
                   const responseTime = Date.now() - startTime;
@@ -176,53 +162,63 @@ jobs:
               }
           }
 
-          // Rapidly test proxies concurrently.
-          async function validateProxies(proxies, concurrency = 50) {
-              const validProxies = [];
-              let index = 0;
-              async function worker() {
-                  while (index < proxies.length) {
-                      const currentIndex = index++;
-                      const proxy = proxies[currentIndex];
-                      if (await testProxy(proxy)) {
-                          validProxies.push(proxy);
-                      }
+          // Verify a proxy by running 10 consecutive tests.
+          async function verifyReliableProxy(proxy) {
+              const RELIABILITY_CHECKS = 10;
+              for (let i = 0; i < RELIABILITY_CHECKS; i++) {
+                  const result = await testProxy(proxy);
+                  if (!result) {
+                      console.log(`Proxy ${proxy} failed reliability check ${i + 1}/${RELIABILITY_CHECKS}`);
+                      return false;
                   }
               }
-              const workers = [];
-              for (let i = 0; i < concurrency; i++) {
-                  workers.push(worker());
-              }
-              await Promise.all(workers);
-              console.log(`Total valid proxies found: ${validProxies.length}`);
-              return validProxies;
+              console.log(`Proxy ${proxy} passed ${RELIABILITY_CHECKS} reliability tests.`);
+              return true;
           }
 
-          // Helper function to safely take a screenshot.
-          async function safeScreenshot(page, path) {
-              try {
-                  await page.screenshot({ path });
-                  console.log(`Screenshot taken: ${path}`);
-              } catch (err) {
-                  console.error(`Failed to take screenshot ${path}: ${err.message}`);
+          // Validate proxies: first an initial test, then verify reliability.
+          async function validateProxies(concurrency = 50) {
+              const allProxies = await fetchProxies();
+              if (allProxies.length === 0) {
+                  console.warn("No proxies fetched. Exiting proxy validation.");
+                  return [];
               }
+
+              console.log("Starting initial proxy tests...");
+              const initialTasks = allProxies.map(proxy => async () => {
+                  return (await testProxy(proxy)) ? proxy : null;
+              });
+              const initialResults = await runWithConcurrency(initialTasks, concurrency);
+              const validProxies = initialResults.filter(p => p);
+              console.log(`Proxies passing initial test: ${validProxies.length}`);
+
+              if (validProxies.length === 0) {
+                  console.warn("No proxies passed the initial test. Exiting.");
+                  return [];
+              }
+
+              console.log("Starting reliability tests (10 tests per proxy)...");
+              const reliableTasks = validProxies.map(proxy => async () => {
+                  return (await verifyReliableProxy(proxy)) ? proxy : null;
+              });
+              const reliableResults = await runWithConcurrency(reliableTasks, concurrency);
+              const reliableProxies = reliableResults.filter(p => p);
+              console.log(`Total reliable proxies found: ${reliableProxies.length}`);
+              return reliableProxies;
           }
+
+          // ----------------------- YouTube Visit Logic -----------------------
 
           async function visitYouTube(videoUrl) {
-              const allProxies = await getProxies();
-              if (allProxies.length === 0) {
-                  console.warn("No proxies available. Exiting...");
-                  return;
-              }
-              const validProxies = await validateProxies(allProxies, 50);
-              if (validProxies.length === 0) {
-                  console.warn("No valid proxies found. Exiting...");
+              const reliableProxies = await validateProxies(50);
+              if (reliableProxies.length === 0) {
+                  console.warn("No reliable proxies found. Exiting...");
                   return;
               }
 
-              // For 3 iterations, pick a random validated proxy.
+              // For 3 iterations, pick a random reliable proxy.
               for (let i = 0; i < 3; i++) {
-                  const proxy = validProxies[Math.floor(Math.random() * validProxies.length)];
+                  const proxy = reliableProxies[Math.floor(Math.random() * reliableProxies.length)];
                   console.log(`Loop ${i + 1}: Using proxy: ${proxy}`);
 
                   console.log('Launching browser with proxy...');
@@ -241,8 +237,17 @@ jobs:
                   });
                   const page = await browser.newPage();
 
-                  page.on('error', error => console.error('Page error:', error));
-                  page.on('pageerror', error => console.error('Page error:', error));
+                  // Flag to indicate if we need to switch proxy immediately.
+                  let shouldSwitch = false;
+
+                  // Listen for page errors and set the flag if the specific error is detected.
+                  page.on('pageerror', error => {
+                      console.error('Page error:', error);
+                      if (error.message.includes("solveSimpleChallenge is not defined")) {
+                          console.log("Encountered solveSimpleChallenge error. Switching proxy immediately.");
+                          shouldSwitch = true;
+                      }
+                  });
 
                   try {
                       // Retry navigation up to 3 times.
@@ -252,6 +257,9 @@ jobs:
                           try {
                               console.log(`Loop ${i + 1}: Attempt ${attempt} to visit ${videoUrl}`);
                               await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 320000 });
+                              if (shouldSwitch) {
+                                  throw new Error("Switching proxy due to solveSimpleChallenge error");
+                              }
                               navigated = true;
                               break;
                           } catch (navError) {
@@ -272,6 +280,9 @@ jobs:
 
                       // Accept YouTube cookie prompt if it appears.
                       await acceptCookies(page);
+                      if (shouldSwitch) {
+                          throw new Error("Switching proxy due to solveSimpleChallenge error");
+                      }
 
                       console.log("Checking if video is already playing...");
                       const isPlaying = await page.evaluate(() => {
@@ -303,9 +314,16 @@ jobs:
                       } else {
                           console.log("Video is already playing. Skipping Play button click.");
                       }
+                      if (shouldSwitch) {
+                          throw new Error("Switching proxy due to solveSimpleChallenge error");
+                      }
 
                       console.log("Watching for 410 seconds with periodic screenshots...");
                       for (let t = 5; t <= 410; t += 5) {
+                          if (shouldSwitch) {
+                              console.log("Switching proxy due to solveSimpleChallenge error during watch loop.");
+                              throw new Error("Switching proxy due to solveSimpleChallenge error");
+                          }
                           await sleep(5000);
                           await safeScreenshot(page, `./screenshots/youtube_watch_${t}s_${Date.now()}.png`);
                       }
