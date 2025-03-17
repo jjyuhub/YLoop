@@ -31,6 +31,14 @@ jobs:
           npm init -y
           npm install puppeteer puppeteer-core puppeteer-extra puppeteer-extra-plugin-stealth fs axios
 
+      - name: Set unique job identifier
+        id: unique-id
+        run: |
+          # Create a unique ID using job matrix info, timestamp, and random string
+          UNIQUE_ID="${{ matrix.os }}-$(date +%s)-$RANDOM"
+          echo "unique_id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "Using unique ID: $UNIQUE_ID"
+
       - name: Create Puppeteer script
         run: |
           mkdir -p scripts screenshots
@@ -40,30 +48,31 @@ jobs:
           const fs = require('fs');
           const axios = require('axios');
           const https = require('https');
-
+          
+          // Get unique ID from environment variable
+          const uniqueId = process.env.UNIQUE_ID || 'default';
+          
           // Configure Axios to accept self-signed certificates
           axios.defaults.httpsAgent = new https.Agent({
               rejectUnauthorized: false
           });
-
           // Use stealth plugin to avoid bot detection.
           puppeteer.use(StealthPlugin());
-
           // Helper sleep function.
           function sleep(ms) {
               return new Promise(resolve => setTimeout(resolve, ms));
           }
-
-          // Helper to safely take a screenshot.
-          async function safeScreenshot(page, path) {
+          // Helper to safely take a screenshot with unique filename.
+          async function safeScreenshot(page, baseFilename) {
               try {
-                  await page.screenshot({ path });
-                  console.log(`Screenshot taken: ${path}`);
+                  // Add unique ID to filename
+                  const uniqueFilename = baseFilename.replace('.png', `-${uniqueId}.png`);
+                  await page.screenshot({ path: uniqueFilename });
+                  console.log(`Screenshot taken: ${uniqueFilename}`);
               } catch (err) {
-                  console.error(`Failed to take screenshot ${path}: ${err.message}`);
+                  console.error(`Failed to take screenshot ${baseFilename}: ${err.message}`);
               }
           }
-
           // Accept cookie consent if present.
           async function acceptCookies(page) {
               try {
@@ -87,9 +96,7 @@ jobs:
                   console.error("Error while accepting cookies:", e.message);
               }
           }
-
           // ----------------------- Proxy Fetch & Fast Validation -----------------------
-
           // Fetch proxies from multiple sources.
           async function fetchProxies() {
               const sources = [
@@ -117,7 +124,6 @@ jobs:
               console.log(`Total unique proxies fetched: ${uniqueProxies.length}`);
               return uniqueProxies;
           }
-
           // A simple concurrency runner.
           async function runWithConcurrency(tasks, concurrency) {
               let index = 0;
@@ -135,7 +141,6 @@ jobs:
               await Promise.all(workers);
               return results;
           }
-
           // Test a single proxy using Axios for a lightweight HTTP request.
           async function testProxy(proxy) {
               const [host, portStr] = proxy.split(':');
@@ -163,7 +168,6 @@ jobs:
                   return false;
               }
           }
-
           // Verify a proxy by running 10 tests concurrently.
           async function verifyReliableProxy(proxy) {
               const RELIABILITY_CHECKS = 10;
@@ -177,7 +181,6 @@ jobs:
                   return null;
               }
           }
-
           // Validate proxies: initial test then reliability test.
           async function validateProxies(concurrency = 50) {
               const allProxies = await fetchProxies();
@@ -185,18 +188,15 @@ jobs:
                   console.warn("No proxies fetched. Exiting proxy validation.");
                   return [];
               }
-
               console.log("Starting initial proxy tests...");
               const initialTasks = allProxies.map(proxy => async () => (await testProxy(proxy)) ? proxy : null);
               const initialResults = await runWithConcurrency(initialTasks, concurrency);
               const validProxies = initialResults.filter(p => p);
               console.log(`Proxies passing initial test: ${validProxies.length}`);
-
               if (validProxies.length === 0) {
                   console.warn("No proxies passed the initial test. Exiting.");
                   return [];
               }
-
               console.log("Starting reliability tests (10 tests per proxy)...");
               const reliableTasks = validProxies.map(proxy => async () => await verifyReliableProxy(proxy));
               const reliableResults = await runWithConcurrency(reliableTasks, concurrency);
@@ -204,20 +204,16 @@ jobs:
               console.log(`Total reliable proxies found: ${reliableProxies.length}`);
               return reliableProxies;
           }
-
           // ----------------------- YouTube Visit Logic -----------------------
-
           async function visitYouTube(videoUrl) {
               const reliableProxies = await validateProxies(50);
               if (reliableProxies.length === 0) {
                   console.warn("No reliable proxies found. Exiting...");
                   return;
               }
-
               // Iterate over all reliable proxies.
               for (const proxy of reliableProxies) {
                   console.log(`Using proxy: ${proxy}`);
-
                   console.log('Launching browser with proxy...');
                   const browser = await puppeteer.launch({
                       headless: "new",
@@ -233,10 +229,8 @@ jobs:
                       ]
                   });
                   const page = await browser.newPage();
-
                   // Flag to indicate if we need to switch proxy immediately.
                   let shouldSwitch = false;
-
                   // Listen for page errors and set the flag if the specific error is detected.
                   page.on('pageerror', error => {
                       console.error('Page error:', error);
@@ -245,7 +239,6 @@ jobs:
                           shouldSwitch = true;
                       }
                   });
-
                   try {
                       // Retry navigation up to 3 times.
                       const maxRetries = 3;
@@ -273,21 +266,17 @@ jobs:
                       if (!navigated) {
                           throw new Error("Navigation failed after maximum retries.");
                       }
-
                       await safeScreenshot(page, `./screenshots/youtube_loaded_${Date.now()}.png`);
-
                       // Accept YouTube cookie prompt if it appears.
                       await acceptCookies(page);
                       if (shouldSwitch) {
                           throw new Error("Switching proxy due to solveSimpleChallenge error");
                       }
-
                       console.log("Checking if video is already playing...");
                       const isPlaying = await page.evaluate(() => {
                           const video = document.querySelector("video");
                           return video && !video.paused;
                       });
-
                       if (!isPlaying) {
                           console.log("Video is not playing. Attempting to click Play button...");
                           const playButtonSelectors = [
@@ -315,7 +304,6 @@ jobs:
                       if (shouldSwitch) {
                           throw new Error("Switching proxy due to solveSimpleChallenge error");
                       }
-
                       console.log("Watching for 410 seconds with periodic screenshots...");
                       for (let t = 5; t <= 410; t += 5) {
                           if (shouldSwitch) {
@@ -325,35 +313,30 @@ jobs:
                           await sleep(5000);
                           await safeScreenshot(page, `./screenshots/youtube_watch_${t}s_${Date.now()}.png`);
                       }
-
                       await safeScreenshot(page, `./screenshots/youtube_finished_${Date.now()}.png`);
-
                       // Save the final HTML page.
                       const finalHtml = await page.content();
-                      const htmlFile = `./screenshots/final_page_${Date.now()}.html`;
+                      const htmlFile = `./screenshots/final_page_${Date.now()}-${uniqueId}.html`;
                       fs.writeFileSync(htmlFile, finalHtml);
                       console.log(`Final HTML page saved: ${htmlFile}`);
-
                   } catch (error) {
                       console.error("Error during page interaction:", error.message);
                       try {
-                          fs.writeFileSync("./screenshots/failure_page_content.html", await page.content());
+                          fs.writeFileSync(`./screenshots/failure_page_content-${uniqueId}.html`, await page.content());
                       } catch (e) {
                           console.error("Failed to save failure page content:", e.message);
                       }
-                      await safeScreenshot(page, "./screenshots/failure_screenshot.png");
+                      await safeScreenshot(page, `./screenshots/failure_screenshot-${uniqueId}.png`);
                   } finally {
                       console.log("Closing browser...");
                       await browser.close();
                   }
               }
           }
-
           async function run() {
               const videoUrl = process.argv[2] || "https://www.youtube.com/watch?v=Km-HyBwxcR8";
               await visitYouTube(videoUrl);
           }
-
           run().catch(error => {
               console.error("Script failed:", error.message);
           });
@@ -363,16 +346,16 @@ jobs:
         run: |
           VIDEO_URL="${{ github.event.inputs.video_url || 'https://www.youtube.com/watch?v=Km-HyBwxcR8' }}"
           echo "Visiting: $VIDEO_URL"
-          node scripts/youtube-visit.js "$VIDEO_URL" | tee script_output.log
+          UNIQUE_ID="${{ steps.unique-id.outputs.unique_id }}" node scripts/youtube-visit.js "$VIDEO_URL" | tee script_output-${{ steps.unique-id.outputs.unique_id }}.log
 
       - name: Upload debug artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: youtube-debug-artifact-$RANDOM-${{ runner.os }}
+          name: youtube-debug-${{ steps.unique-id.outputs.unique_id }}
           path: |
             screenshots/
             *.log
-            failure_page_content.html
-            failure_screenshot.png
+            failure_page_content*.html
+            failure_screenshot*.png
           retention-days: 7
