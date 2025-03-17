@@ -205,10 +205,9 @@ jobs:
                   return;
               }
 
-              // For 3 iterations, pick a random reliable proxy.
-              for (let i = 0; i < 3; i++) {
-                  const proxy = reliableProxies[Math.floor(Math.random() * reliableProxies.length)];
-                  console.log(`Loop ${i + 1}: Using proxy: ${proxy}`);
+              // Iterate over all reliable proxies.
+              for (const proxy of reliableProxies) {
+                  console.log(`Using proxy: ${proxy}`);
 
                   console.log('Launching browser with proxy...');
                   const browser = await puppeteer.launch({
@@ -244,7 +243,7 @@ jobs:
                       let navigated = false;
                       for (let attempt = 1; attempt <= maxRetries; attempt++) {
                           try {
-                              console.log(`Loop ${i + 1}: Attempt ${attempt} to visit ${videoUrl}`);
+                              console.log(`Attempt ${attempt} to visit ${videoUrl}`);
                               await page.goto(videoUrl, { waitUntil: 'networkidle2', timeout: 320000 });
                               if (shouldSwitch) {
                                   throw new Error("Switching proxy due to solveSimpleChallenge error");
@@ -252,7 +251,7 @@ jobs:
                               navigated = true;
                               break;
                           } catch (navError) {
-                              console.error(`Loop ${i + 1}: Attempt ${attempt} failed: ${navError.message}`);
+                              console.error(`Attempt ${attempt} failed: ${navError.message}`);
                               if (attempt < maxRetries) {
                                   console.log("Retrying in 5 seconds...");
                                   await sleep(5000);
