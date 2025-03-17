@@ -135,7 +135,7 @@ jobs:
                   console.log(`Testing proxy ${proxy}...`);
                   const startTime = Date.now();
                   const response = await axios.get('https://www.youtube.com', {
-                      timeout: 10000,
+                      timeout: 100000,
                       proxy: { host, port },
                       headers: {
                           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
